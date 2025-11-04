@@ -12,6 +12,10 @@ import tempfile
 import base64
 import hashlib
 import re  # ✅ added for emoji removal
+# --- ElevenLabs Import ---
+from elevenlabs.client import ElevenLabs
+from elevenlabs import VoiceSettings
+
 
 # -----------------------------
 # CONFIGURATION
@@ -313,6 +317,7 @@ if user_input:
     save_memory(st.session_state.memory)
 
     st.rerun()
+
 
 
 
