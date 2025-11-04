@@ -6,4 +6,5 @@ pytz
 elevenlabs
 pydub
 protobuf
+python-dotenv
 
