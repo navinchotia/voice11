@@ -202,7 +202,7 @@ def cached_tts(text):
     try:
         client = ElevenLabs(api_key=ELEVEN_API_KEY)
         audio_stream = client.text_to_speech.convert(
-            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            voice_id="Ui0HFqLn4HkcAenlJJVJ",
             model_id="eleven_multilingual_v2",
             text=clean_text,
         )
@@ -292,3 +292,4 @@ if user_input:
     st.session_state.messages.append({"role": "assistant", "content": reply})
     save_memory(st.session_state.memory)
     st.rerun()
+
