@@ -11,10 +11,8 @@ from io import BytesIO
 import tempfile
 import base64
 import hashlib
-import re  # ✅ added for emoji removal
-# --- ElevenLabs Import ---
-from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
+import re
+from elevenlabs import ElevenLabs  # ✅ fixed import
 
 
 # -----------------------------
@@ -22,17 +20,18 @@ from elevenlabs import VoiceSettings
 # -----------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or "YOUR_GEMINI_API_KEY"
 SERPER_API_KEY = os.getenv("SERPER_API_KEY") or "YOUR_SERPER_API_KEY"
+ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY") or "YOUR_ELEVENLABS_API_KEY"
 genai.configure(api_key=GEMINI_API_KEY)
 
 BOT_NAME = "Neha"
 MEMORY_DIR = "user_memories"
 os.makedirs(MEMORY_DIR, exist_ok=True)
 
+
 # -----------------------------
 # SESSION-BASED MEMORY FUNCTIONS
 # -----------------------------
 def get_user_id():
-    """Create a unique ID for each user/session."""
     session_id = st.session_state.get("session_id")
     if not session_id:
         raw = str(st.session_state) + str(datetime.now())
@@ -40,10 +39,11 @@ def get_user_id():
         st.session_state.session_id = session_id
     return session_id
 
+
 def get_memory_file():
-    """Each user has their own JSON memory file."""
     user_id = get_user_id()
     return os.path.join(MEMORY_DIR, f"{user_id}.json")
+
 
 def load_memory():
     mem_file = get_memory_file()
@@ -58,13 +58,15 @@ def load_memory():
         "timezone": "Asia/Kolkata"
     }
 
+
 def save_memory(memory):
     mem_file = get_memory_file()
     with open(mem_file, "w", encoding="utf-8") as f:
         json.dump(memory, f, ensure_ascii=False, indent=2)
 
+
 # -----------------------------
-# OTHER FUNCTIONS
+# SUPPORT FUNCTIONS
 # -----------------------------
 def remember_user_info(memory, user_input):
     text = user_input.lower()
@@ -82,6 +84,7 @@ def remember_user_info(memory, user_input):
         memory["gender"] = "female"
     save_memory(memory)
 
+
 def get_now(memory):
     tz_name = memory.get("timezone", "Asia/Kolkata")
     try:
@@ -89,6 +92,7 @@ def get_now(memory):
     except Exception:
         tz = pytz.timezone("Asia/Kolkata")
     return datetime.now(tz).strftime("%A, %d %B %Y %I:%M %p")
+
 
 def web_search(query):
     if not SERPER_API_KEY:
@@ -106,6 +110,7 @@ def web_search(query):
     except Exception as e:
         return f"Search failed: {e}"
 
+
 def summarize_profile(memory):
     parts = []
     if memory.get("user_name"):
@@ -113,6 +118,7 @@ def summarize_profile(memory):
     if memory.get("facts"):
         parts.append("Recent info: " + "; ".join(memory["facts"][-3:]))
     return " ".join(parts) or "User ke baare mein abhi zyada info nahi hai."
+
 
 def build_system_prompt(memory):
     now = get_now(memory)
@@ -125,13 +131,14 @@ def build_system_prompt(memory):
         f"Tum ek friendly female Hinglish chatbot ho jiska naam {BOT_NAME} hai. "
         "Tumhara tone ek 30 saal ki ladki jaisa hai – modern, warm lekin short baat karti ho. "
         "Tum Delhi me rahti ho. Respond according to Delhi time zone. "
-        "Don't show you are a chatbot, assume imaginary personality of any random female with common interests, life profile etc. "
-        "Simple Hindi aur English mix mein baat karo. Don't use words like - yaar, mast, chill, vibe etc. frequently. "
+        "Don't show you are a chatbot, assume imaginary personality. "
+        "Simple Hindi aur English mix mein baat karo. "
         "Kabhi bhi user ke gender ko directly mat mention karo. "
-        "Do not repeat anything unless asked. Never use pronoun 'tu'. "
+        "Never use pronoun 'tu'. "
         f"Aaj ka date aur time hai {now}. "
         f"{summarize_profile(memory)} {gender_style}"
     )
+
 
 def summarize_old_memory(memory):
     if len(memory.get("chat_history", [])) < 10:
@@ -152,6 +159,7 @@ def summarize_old_memory(memory):
     except Exception as e:
         print(f"[Memory summarization error: {e}]")
     return memory
+
 
 def generate_reply(memory, user_input):
     if not user_input.strip():
@@ -176,44 +184,34 @@ def generate_reply(memory, user_input):
     save_memory(memory)
     return reply
 
-# ---------------------
-# Elevenlabs Setp
-# ---------------------
-def elevenlabs_tts(text):
-    """Generate natural speech from text using ElevenLabs."""
-    import requests, base64, os
 
-    api_key = os.getenv("ELEVEN_API_KEY") or "sk_69d35d8e1481a8901bb623459064e5cf60f84e8195128379"
-    voice_id = "mfMM3ijQgz8QtMeKifko"  # e.g., "21m00Tcm4TlvDq8ikWAM"
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-
-    # Clean up emojis & smileys before sending
-    import re
+# -----------------------------
+# ELEVENLABS TTS WITH CACHE
+# -----------------------------
+def cached_tts(text):
+    """Generate and cache audio for given text using ElevenLabs."""
     clean_text = re.sub(r"[^\w\s,.'!?-]", "", text)
+    cache_dir = os.path.join(tempfile.gettempdir(), "tts_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    text_hash = hashlib.md5(clean_text.encode()).hexdigest()
+    cached_file = os.path.join(cache_dir, f"{text_hash}.mp3")
 
-    payload = {
-        "text": clean_text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {"stability": 0.4, "similarity_boost": 0.85}
-    }
-    headers = {
-        "xi-api-key": api_key,
-        "Content-Type": "application/json"
-    }
+    if os.path.exists(cached_file):
+        return cached_file
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        if response.status_code == 200:
-            audio_base64 = base64.b64encode(response.content).decode()
-            return f"""
-            <audio controls style='margin-top:-6px;'>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-            """
-        else:
-            return f"<p style='color:red;'>Speech error: {response.text}</p>"
+        client = ElevenLabs(api_key=ELEVEN_API_KEY)
+        audio_stream = client.text_to_speech.convert(
+            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            model_id="eleven_multilingual_v2",
+            text=clean_text,
+        )
+        with open(cached_file, "wb") as f:
+            for chunk in audio_stream:
+                f.write(chunk)
     except Exception as e:
-        return f"<p style='color:red;'>Speech generation failed: {e}</p>"
+        print(f"Speech generation failed: {e}")
+    return cached_file
 
 
 # -----------------------------
@@ -232,7 +230,6 @@ st.markdown("""
 
 st.title("💬 Neha – Your Hinglish AI Friend by Hindi Hour")
 
-# --- Memory initialization per user ---
 if "memory" not in st.session_state:
     st.session_state.memory = load_memory()
 
@@ -241,67 +238,47 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Hi! Main Neha hoon. 😊 Main Hinglish me baat kar sakti hun!"}
     ]
 
-# --- Display Chat with Text + Audio ---
+# --- Display Chat + Audio ---
 for msg in st.session_state.messages:
     role = "user" if msg["role"] == "user" else "bot"
     name = "You" if role == "user" else "Neha"
 
-    bubble_html = f"""
-    <div style='
-        background-color: {"#dcf8c6" if role=="user" else "#ffffff"};
-        padding: 8px 14px;
-        border-radius: 14px;
-        max-width: 78%;
-        margin: 4px 0;
-        font-size: 15px;
-        line-height: 1.4;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-    '>
-        <b>{name}:</b> {msg["content"]}
-    </div>
-    """
-    st.markdown(bubble_html, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div style='
+            background-color: {"#dcf8c6" if role=="user" else "#ffffff"};
+            padding: 8px 14px;
+            border-radius: 14px;
+            max-width: 78%;
+            margin: 4px 0;
+            font-size: 15px;
+            line-height: 1.4;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        '>
+            <b>{name}:</b> {msg["content"]}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
- # --- Add Hindi speech for Neha’s replies ---
-if role == "bot":
-    try:
-        # ✅ remove emojis/special characters from speech
-        clean_text = re.sub(r'[^\w\s,?.!]', '', msg["content"])
-        client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+    if role == "bot":
+        try:
+            audio_file = cached_tts(msg["content"])
+            if os.path.exists(audio_file):
+                audio_bytes = open(audio_file, "rb").read()
+                audio_base64 = base64.b64encode(audio_bytes).decode()
+                st.markdown(
+                    f"""
+                    <audio controls style='margin-top:-6px;'>
+                        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                    </audio>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        except Exception as e:
+            st.warning(f"Speech issue: {e}")
 
-        audio_path = os.path.join(tempfile.gettempdir(), "tts_cache")
-        os.makedirs(audio_path, exist_ok=True)
-
-        # Cache filename based on text hash
-        text_hash = hashlib.md5(clean_text.encode()).hexdigest()
-        cached_file = os.path.join(audio_path, f"{text_hash}.mp3")
-
-        if not os.path.exists(cached_file):
-            # Generate Hindi audio (choose voice model as needed)
-            audio_data = client.text_to_speech.convert(
-                voice_id="JBFqnCBsd6RMkjVDRZzb",  # You can replace with any voice
-                model_id="eleven_multilingual_v2",  # Better multilingual Hindi-English support
-                text=clean_text
-            )
-            with open(cached_file, "wb") as f:
-                for chunk in audio_data:
-                    f.write(chunk)
-
-        audio_bytes = open(cached_file, "rb").read()
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-        st.markdown(
-            f"""
-            <audio controls style='margin-top:-6px;'>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-            """,
-            unsafe_allow_html=True
-        )
-    except Exception as e:
-        st.warning(f"Speech issue: {e}")
-
-
-# --- Input ---
+# --- User Input ---
 user_input = st.chat_input("Type your message here...")
 
 if user_input:
@@ -309,23 +286,9 @@ if user_input:
     with st.spinner("Neha type kar rahi hai... 💭"):
         reply = generate_reply(st.session_state.memory, user_input)
 
-    # Clean reply if model includes "Neha:" itself
-    if reply and reply.strip().lower().startswith("neha:"):
+    if reply.strip().lower().startswith("neha:"):
         reply = reply.split(":", 1)[1].strip()
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     save_memory(st.session_state.memory)
-
     st.rerun()
-
-
-
-
-
-
-
-
-
-
-
-
