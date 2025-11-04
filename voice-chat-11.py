@@ -258,44 +258,33 @@ for msg in st.session_state.messages:
     """
     st.markdown(bubble_html, unsafe_allow_html=True)
 
- # --- Add Hindi speech for Neha’s replies (using ElevenLabs with caching) ---
+ # --- Add Hindi speech for Neha’s replies ---
 if role == "bot":
     try:
-        from elevenlabs import generate, set_api_key
-        import base64
-        import hashlib
+        # ✅ remove emojis/special characters from speech
+        clean_text = re.sub(r'[^\w\s,?.!]', '', msg["content"])
+        client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-        ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY") or "YOUR_ELEVEN_API_KEY"
-        set_api_key(ELEVEN_API_KEY)
+        audio_path = os.path.join(tempfile.gettempdir(), "tts_cache")
+        os.makedirs(audio_path, exist_ok=True)
 
-        # Clean text for TTS
-        clean_text = re.sub(r'[^\w\s,.!?-]', '', msg["content"]).strip()
+        # Cache filename based on text hash
+        text_hash = hashlib.md5(clean_text.encode()).hexdigest()
+        cached_file = os.path.join(audio_path, f"{text_hash}.mp3")
 
-        # Create cache folder
-        CACHE_DIR = "tts_cache"
-        os.makedirs(CACHE_DIR, exist_ok=True)
-
-        # Unique filename hash based on the clean text
-        hash_id = hashlib.md5(clean_text.encode("utf-8")).hexdigest()
-        cache_file = os.path.join(CACHE_DIR, f"{hash_id}.mp3")
-
-        # If cached audio exists, reuse it
-        if os.path.exists(cache_file):
-            with open(cache_file, "rb") as f:
-                audio_bytes = f.read()
-        else:
-            # Generate new audio and save to cache
-            audio_bytes = generate(
-                text=clean_text,
-                voice="Bella",  # 🔄 can replace with any Hindi+English friendly voice
-                model="eleven_multilingual_v2"
+        if not os.path.exists(cached_file):
+            # Generate Hindi audio (choose voice model as needed)
+            audio_data = client.text_to_speech.convert(
+                voice_id="JBFqnCBsd6RMkjVDRZzb",  # You can replace with any voice
+                model_id="eleven_multilingual_v2",  # Better multilingual Hindi-English support
+                text=clean_text
             )
-            with open(cache_file, "wb") as f:
-                f.write(audio_bytes)
+            with open(cached_file, "wb") as f:
+                for chunk in audio_data:
+                    f.write(chunk)
 
-        # Convert to base64 for inline playback
+        audio_bytes = open(cached_file, "rb").read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
-
         st.markdown(
             f"""
             <audio controls style='margin-top:-6px;'>
@@ -304,7 +293,6 @@ if role == "bot":
             """,
             unsafe_allow_html=True
         )
-
     except Exception as e:
         st.warning(f"Speech issue: {e}")
 
@@ -325,6 +313,7 @@ if user_input:
     save_memory(st.session_state.memory)
 
     st.rerun()
+
 
 
 
