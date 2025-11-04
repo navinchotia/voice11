@@ -14,17 +14,7 @@ st.set_page_config(page_title="Neha - Hindi Chatbot", page_icon="💬")
 
 # --- Set your ElevenLabs API key ---
 ELEVEN_API_KEY = st.secrets.get("ELEVEN_API_KEY", None)
-if ELEVEN_API_KEY:
-    set_api_key(ELEVEN_API_KEY)
-else:
-    st.warning("⚠️ ElevenLabs API key not found in secrets.")
-# --- Set ElevenLabs client ---
-ELEVEN_API_KEY = st.secrets.get("ELEVEN_API_KEY", None)
-if ELEVEN_API_KEY:
-    client = ElevenLabs(api_key=ELEVEN_API_KEY)
-else:
-    client = None
-    st.warning("⚠️ ElevenLabs API key not found in secrets.")
+
 # --- Google Gemini Configuration ---
 genai.configure(api_key=st.secrets.get("GEMINI_API_KEY"))
 MODEL = "gemini-2.5-flash"
@@ -149,5 +139,6 @@ if user_input:
             )
         else:
             st.warning("No audio generated.")
+
 
 
