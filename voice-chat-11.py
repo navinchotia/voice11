@@ -5,7 +5,7 @@ import tempfile
 import base64
 import re
 import os
-from elevenlabs import generate, set_api_key
+from elevenlabs.client import ElevenLabs
 
 # ------------------------------
 # CONFIGURATION
@@ -18,7 +18,13 @@ if ELEVEN_API_KEY:
     set_api_key(ELEVEN_API_KEY)
 else:
     st.warning("⚠️ ElevenLabs API key not found in secrets.")
-
+# --- Set ElevenLabs client ---
+ELEVEN_API_KEY = st.secrets.get("ELEVEN_API_KEY", None)
+if ELEVEN_API_KEY:
+    client = ElevenLabs(api_key=ELEVEN_API_KEY)
+else:
+    client = None
+    st.warning("⚠️ ElevenLabs API key not found in secrets.")
 # --- Google Gemini Configuration ---
 genai.configure(api_key=st.secrets.get("GEMINI_API_KEY"))
 MODEL = "gemini-2.5-flash"
@@ -67,20 +73,21 @@ def text_to_speech(text):
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
 
     # --- Try ElevenLabs First ---
-    if ELEVEN_API_KEY:
+    if client:
         try:
-            audio = generate(
-                text=clean_text,
-                voice="Rachel",  # ✅ Reliable multilingual voice
-                model="eleven_multilingual_v2"
+            response = client.text_to_speech.convert(
+                voice_id="EXAVITQu4vr4xnSDxMaL",  # You can change to any valid voice ID
+                model_id="eleven_multilingual_v2",
+                text=clean_text
             )
 
-            if not audio or len(audio) == 0:
-                st.warning("⚠️ ElevenLabs returned empty audio. Using gTTS instead.")
+            with open(temp_file.name, "wb") as f:
+                for chunk in response:
+                    f.write(chunk)
+
+            if os.path.getsize(temp_file.name) == 0:
                 raise ValueError("Empty ElevenLabs audio")
 
-            with open(temp_file.name, "wb") as f:
-                f.write(audio)
             return temp_file.name
 
         except Exception as e:
@@ -94,6 +101,7 @@ def text_to_speech(text):
     except Exception as e:
         st.error(f"TTS Fallback issue: {e}")
         return None
+
 
 # ------------------------------
 # CHAT UI
@@ -141,4 +149,5 @@ if user_input:
             )
         else:
             st.warning("No audio generated.")
+
 
