@@ -179,7 +179,7 @@ def elevenlabs_tts(text):
     """Generate natural speech from text using ElevenLabs."""
     import requests, base64, os
 
-    api_key = os.getenv("ELEVEN_API_KEY") or "YOUR_ELEVEN_API_KEY"
+    api_key = os.getenv("ELEVEN_API_KEY") or "1c78568cb7b01c656858a9b5ce634e75360c266e6eae1011c723b9b8dae227da"
     voice_id = "mfMM3ijQgz8QtMeKifko"  # e.g., "21m00Tcm4TlvDq8ikWAM"
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
@@ -325,6 +325,7 @@ if user_input:
     save_memory(st.session_state.memory)
 
     st.rerun()
+
 
 
 
